@@ -49,6 +49,8 @@ jobs:
           fi
 
   update:
+    permissions:
+      contents: write
     needs: check-release
     if: needs.check-release.outputs.needs_update == 'true'
     runs-on: ubuntu-latest
