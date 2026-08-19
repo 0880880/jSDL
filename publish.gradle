@@ -1,0 +1,27 @@
+apply plugin: 'maven-publish'
+
+ext.artifact = 'jSDL'
+ext.packaging = 'jar'
+
+repositories {
+    mavenCentral()
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            versionMapping {
+                usage('java-api') {
+                    fromResolutionOf('runtimeClasspath')
+                }
+                usage('java-runtime') {
+                    fromResolutionResult()
+                }
+            }
+
+            artifactId = artifact
+        }
+    }
+}
+

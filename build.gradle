@@ -1,0 +1,115 @@
+buildscript {
+    repositories {
+        maven { url 'https://jitpack.io' }
+        mavenCentral()
+        gradlePluginPortal()
+        mavenLocal()
+        google()
+        maven { url 'https://central.sonatype.com/repository/maven-snapshots/' }
+    }
+    dependencies {
+        classpath "com.badlogicgames.jnigen:jnigen-gradle:$jniGenVersion"
+    }
+}
+
+plugins {
+    id 'java'
+}
+
+apply plugin: "com.badlogicgames.jnigen.jnigen-gradle"
+
+group 'com.github.zeroeighteightzero.sdl'
+version '1.0.0'
+
+repositories {
+    maven { url 'https://jitpack.io' }
+    maven { url "https://central.sonatype.com/repository/maven-snapshots/" }
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    implementation "com.badlogicgames.jnigen:jnigen-loader:$jniGenVersion"
+    implementation "com.badlogicgames.jnigen:jnigen-runtime:$jniGenVersion"
+    implementation "com.badlogicgames.jnigen:jnigen-runtime-platform:$jniGenVersion:natives-desktop"
+    implementation "com.badlogicgames.jnigen:jnigen-runtime-platform:$jniGenVersion:natives-ios"
+    implementation "com.badlogicgames.jnigen:jnigen-runtime-platform:$jniGenVersion:natives-arm64-v8a"
+    implementation "com.badlogicgames.jnigen:jnigen-runtime-platform:$jniGenVersion:natives-armeabi-v7a"
+    implementation "com.badlogicgames.jnigen:jnigen-runtime-platform:$jniGenVersion:natives-x86"
+    implementation "com.badlogicgames.jnigen:jnigen-runtime-platform:$jniGenVersion:natives-x86_64"
+
+    testRuntimeOnly(files("build/jnigen/libs/jSDL-natives-desktop.jar"))
+}
+
+java {
+    withJavadocJar()
+    withSourcesJar()
+
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+task dist(type: Jar) {
+    from files(sourceSets.main.output.classesDirs)
+    from files(sourceSets.main.output.resourcesDir)
+}
+
+tasks.withType(JavaCompile) {
+    if (JavaVersion.current().isJava9Compatible()) {
+        options.compilerArgs += ["--release", "8"]
+    }
+}
+
+jnigen {
+    sharedLibName = "jSDL"
+
+    generator {
+        outputPath = file("src/main/java")
+        basePackage = "com.github.zeroeighteightzero.sdl"
+        fileToParse = "includes.h"
+        options = [
+                "-Ijni/sdl/include",
+                "-Ijni/jsdl"
+        ]
+    }
+
+    all {
+        headerDirs += [
+                "-Ijni/sdl/include"
+        ]
+
+        cIncludes = ["jni/sdl/src/SDL.c"]
+
+        cppIncludes = []
+
+        cExcludes = [
+                "jni/sdl/examples/",
+        ]
+
+        cppExcludes = [
+                "jni/sdl/examples/",
+        ]
+    }
+
+    addWindows(x32, x86, GCC_CLANG)
+    addWindows(x64, x86, GCC_CLANG)
+
+    addLinux(x64, x86)
+    addLinux(x32, ARM)
+    addLinux(x64, ARM)
+    addLinux(x64, RISCV)
+
+    addMac(x64, x86)
+    addMac(x64, ARM)
+    addIOS()
+
+    robovm {
+        minIOSVersion = "15.0"
+    }
+
+    addAndroid() {
+        androidApplicationMk += ["APP_CPPFLAGS += -fexceptions -frtti\nAPP_STL := c++_shared"]
+    }
+}
+
+apply from: 'publish.gradle'

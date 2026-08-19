@@ -1,0 +1,104 @@
+name: Sync and Build
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      sha: ${{ steps.release.outputs.sha }}
+      needs_update: ${{ steps.compare.outputs.needs_update }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Get latest release SHA
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh api repos/0880880/jSDL/releases/latest --jq .tag_name)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          REF=$(gh api "repos/0880880/jSDL/git/ref/tags/$TAG")
+          SHA=$(echo "$REF" | jq -r .object.sha)
+          if [ "$(echo "$REF" | jq -r .object.type)" = "tag" ]; then
+            SHA=$(gh api "repos/0880880/jSDL/git/tags/$SHA" --jq .object.sha)
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Compare submodule pointer and Gradle version
+        id: compare
+        run: |
+          CURRENT_SHA=$(git ls-tree HEAD jni/sdl | awk '{print $3}')
+          GRADLE_VERSION=$(grep "^version" build.gradle | sed "s/version '\(.*\)'/\1/")
+          RELEASE_TAG="${{ steps.release.outputs.tag }}"
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+
+          if [ "$CURRENT_SHA" = "${{ steps.release.outputs.sha }}" ] && \
+             [ "$GRADLE_VERSION" = "$RELEASE_VERSION" ]; then
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  update:
+    needs: check-release
+    if: needs.check-release.outputs.needs_update == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Update Gradle version
+        run: |
+          RELEASE_VERSION="${{ needs.check-release.outputs.tag }}"
+          RELEASE_VERSION="${RELEASE_VERSION#v}"
+          sed -i "s/^version '.*'/version '$RELEASE_VERSION'/" build.gradle
+
+      - name: Pin submodule to new release
+        run: |
+          git -C jni/sdl fetch --depth 1 origin \
+            tag "${{ needs.check-release.outputs.tag }}"
+          git -C jni/sdl checkout "${{ needs.check-release.outputs.sha }}"
+          git add jni/sdl build.gradle
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: bump submodule and version to ${{ needs.check-release.outputs.tag }}"
+          git push
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    needs: update
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      - name: Install cross-compilation toolchains
+        run: |
+          sudo apt update
+          sudo apt install -y --force-yes gcc g++
+          sudo apt install -y --force-yes gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
+          sudo apt install -y --force-yes gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6-dev-armhf-cross
+          sudo apt install -y --force-yes gcc-riscv64-linux-gnu g++-riscv64-linux-gnu libc6-dev-riscv64-cross
+          sudo apt install -y --force-yes mingw-w64 lib
