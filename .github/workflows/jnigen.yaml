@@ -123,6 +123,8 @@ jobs:
         run: chmod +x gradlew
       - name: Initialize jnigen
         run: ./gradlew jnigen
+      - name: Generate bindings
+        run: ./gradlew jnigenGenerateBindings
       - name: Build natives
         run: ./gradlew jnigenBuildAllAndroid jnigenBuildAllLinux jnigenBuildAllWindows
 
@@ -162,6 +164,8 @@ jobs:
         run: chmod +x gradlew
       - name: Initialize jnigen
         run: ./gradlew jnigen
+      - name: Generate bindings
+        run: ./gradlew jnigenGenerateBindings
       - name: Build natives
         run: ./gradlew jnigenBuildAllIOS jnigenBuildAllMacOsX
 
